@@ -1,10 +1,23 @@
 import React, { useState } from 'react';
 import { useKeycloak } from '@react-keycloak/web';
 
+interface Report {
+  reportDate: string;
+  userId: string;
+  prosthesisId: string;
+  userName: string;
+  prosthesisModel: string;
+  totalSessions: number;
+  avgSignalStrength: number;
+  totalMovements: number;
+  errorCount: number;
+}
+
 const ReportPage: React.FC = () => {
   const { keycloak, initialized } = useKeycloak();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reports, setReports] = useState<Report[]>([]);
 
   const downloadReport = async () => {
     if (!keycloak?.token) {
@@ -22,7 +35,13 @@ const ReportPage: React.FC = () => {
         }
       });
 
-      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      setReports(data);
+
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
@@ -67,6 +86,38 @@ const ReportPage: React.FC = () => {
             {error}
           </div>
         )}
+
+          {reports.length > 0 && (
+              <div className="mt-6">
+                <h2 className="text-xl font-bold mb-4">Your Reports</h2>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white border border-gray-200">
+                    <thead>
+                    <tr className="bg-gray-100">
+                      <th className="px-4 py-2 border">Date</th>
+                      <th className="px-4 py-2 border">Prosthesis</th>
+                      <th className="px-4 py-2 border">Sessions</th>
+                      <th className="px-4 py-2 border">Avg Signal</th>
+                      <th className="px-4 py-2 border">Movements</th>
+                      <th className="px-4 py-2 border">Errors</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    {reports.map((report, index) => (
+                        <tr key={index} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 border text-center">{report.reportDate}</td>
+                          <td className="px-4 py-2 border">{report.prosthesisModel}</td>
+                          <td className="px-4 py-2 border text-center">{report.totalSessions}</td>
+                          <td className="px-4 py-2 border text-center">{report.avgSignalStrength}</td>
+                          <td className="px-4 py-2 border text-center">{report.totalMovements}</td>
+                          <td className="px-4 py-2 border text-center">{report.errorCount}</td>
+                        </tr>
+                    ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+          )}
       </div>
     </div>
   );
