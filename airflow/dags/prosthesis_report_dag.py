@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.python import PythonOperator
-from airflow.providers.postgres.operators.postgres import PostgresOperator
+from clickhouse_driver import Client
 import csv
 
 default_args = {
@@ -14,95 +14,68 @@ default_args = {
 dag = DAG(
     'prosthesis_report_daily',
     default_args=default_args,
-    description='Ежедневная витрина отчётов по протезам',
-    schedule_interval= '*/2 * * * *',#'0 2 * * *',
+    schedule_interval='0 2 * * *',
     catchup=False,
 )
 
-# 1. Создание таблиц
-create_tables = PostgresOperator(
-    task_id='create_tables',
-    postgres_conn_id='olap_db',
-    sql='sql/create_tables.sql',
-    dag=dag,
-)
+def get_client():
+    return Client(host='clickhouse', port=9000, user='default', password='clickhouse123')
 
-# 2. Функции для чтения CSV и генерации SQL
-def generate_crm_queries():
-    """Читает CRM данные из CSV и генерирует INSERT запросы"""
-    csv_file_path = '/opt/airflow/data/crm_data.csv'
-    insert_queries = []
+def cleanup():
+    client = get_client()
+    client.execute('TRUNCATE TABLE reports_db.crm_temp')
+    client.execute('TRUNCATE TABLE reports_db.telemetry_temp')
 
-    with open(csv_file_path, 'r') as csvfile:
-        csvreader = csv.reader(csvfile)
-        is_header = True
-        for row in csvreader:
-            if is_header:
-                is_header = False
-                continue
-            query = f"INSERT INTO crm_temp (user_id, user_name, prosthesis_id, prosthesis_model) VALUES ('{row[0]}', '{row[1]}', '{row[2]}', '{row[3]}');"
-            insert_queries.append(query)
+def load_crm():
+    client = get_client()
+    with open('/opt/airflow/data/crm_data.csv', 'r') as f:
+        reader = csv.reader(f)
+        next(reader)
+        for row in reader:
+            client.execute(
+                'INSERT INTO reports_db.crm_temp VALUES',
+                [(row[0], row[1], row[2], row[3])]
+            )
 
-    with open('./dags/sql/crm_queries.sql', 'w') as f:
-        for query in insert_queries:
-            f.write(f"{query}\n")
+def load_telemetry():
+    client = get_client()
+    with open('/opt/airflow/data/telemetry_data.csv', 'r') as f:
+        reader = csv.reader(f)
+        next(reader)
+        for row in reader:
+            event_date = datetime.strptime(row[2], '%Y-%m-%d').date()
+            client.execute(
+                'INSERT INTO reports_db.telemetry_temp VALUES',
+                [(row[0], row[1], event_date, int(row[3]), float(row[4]), int(row[5]), int(row[6]))]
+            )
 
-def generate_telemetry_queries():
-    """Читает телеметрию из CSV и генерирует INSERT запросы"""
-    csv_file_path = '/opt/airflow/data/telemetry_data.csv'
-    insert_queries = []
+def merge_to_fact():
+    client = get_client()
+    client.execute('TRUNCATE TABLE reports_db.prosthesis_daily_fact')
 
-    with open(csv_file_path, 'r') as csvfile:
-        csvreader = csv.reader(csvfile)
-        is_header = True
-        for row in csvreader:
-            if is_header:
-                is_header = False
-                continue
-            query = f"INSERT INTO telemetry_temp (user_id, prosthesis_id, event_date, total_sessions, avg_signal_strength, total_movements, error_count) VALUES ('{row[0]}', '{row[1]}', '{row[2]}', {row[3]}, {row[4]}, {row[5]}, {row[6]});"
-            insert_queries.append(query)
+    client.execute('''
+        INSERT INTO reports_db.prosthesis_daily_fact (
+            report_date, user_id, prosthesis_id, user_name, prosthesis_model,
+            total_sessions, avg_signal_strength, total_movements, error_count, updated_at
+        )
+        SELECT
+            t.event_date,
+            t.user_id,
+            t.prosthesis_id,
+            COALESCE(c.user_name, t.user_id),
+            COALESCE(c.prosthesis_model, 'Unknown'),
+            t.total_sessions,
+            t.avg_signal_strength,
+            t.total_movements,
+            t.error_count,
+            now()
+        FROM reports_db.telemetry_temp t
+        LEFT JOIN reports_db.crm_temp c ON t.user_id = c.user_id AND t.prosthesis_id = c.prosthesis_id
+    ''')
 
-    with open('./dags/sql/telemetry_queries.sql', 'w') as f:
-        for query in insert_queries:
-            f.write(f"{query}\n")
+cleanup_task = PythonOperator(task_id='cleanup', python_callable=cleanup, dag=dag)
+load_crm_task = PythonOperator(task_id='load_crm', python_callable=load_crm, dag=dag)
+load_telemetry_task = PythonOperator(task_id='load_telemetry', python_callable=load_telemetry, dag=dag)
+merge_task = PythonOperator(task_id='merge', python_callable=merge_to_fact, dag=dag)
 
-# 3. Операторы для генерации SQL
-generate_crm = PythonOperator(
-    task_id='generate_crm_queries',
-    python_callable=generate_crm_queries,
-    dag=dag,
-)
-
-generate_telemetry = PythonOperator(
-    task_id='generate_telemetry_queries',
-    python_callable=generate_telemetry_queries,
-    dag=dag,
-)
-
-# 4. Выполнение SQL запросов
-run_crm_queries = PostgresOperator(
-    task_id='run_crm_queries',
-    postgres_conn_id='olap_db',
-    sql='sql/crm_queries.sql',
-    dag=dag,
-)
-
-run_telemetry_queries = PostgresOperator(
-    task_id='run_telemetry_queries',
-    postgres_conn_id='olap_db',
-    sql='sql/telemetry_queries.sql',
-    dag=dag,
-)
-
-run_merge_queries = PostgresOperator(
-    task_id='run_merge_queries',
-    postgres_conn_id='olap_db',
-    sql='sql/merge_queries.sql',
-    dag=dag,
-)
-
-# Порядок выполнения задач
-create_tables >> [generate_crm, generate_telemetry]
-generate_crm >> run_crm_queries
-generate_telemetry >> run_telemetry_queries
-[run_crm_queries, run_telemetry_queries] >> run_merge_queries
+cleanup_task >> [load_crm_task, load_telemetry_task] >> merge_task

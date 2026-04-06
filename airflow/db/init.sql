@@ -1,3 +1,0 @@
-CREATE DATABASE olap_db;
-
-GRANT ALL PRIVILEGES ON DATABASE olap_db TO airflow;
