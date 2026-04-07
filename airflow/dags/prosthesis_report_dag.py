@@ -51,7 +51,7 @@ def load_telemetry():
 
 def merge_to_fact():
     client = get_client()
-    client.execute('TRUNCATE TABLE reports_db.prosthesis_daily_fact')
+    client.execute('TRUNCATE TABLE IF EXISTS reports_db.prosthesis_daily_fact')
 
     client.execute('''
         INSERT INTO reports_db.prosthesis_daily_fact (

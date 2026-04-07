@@ -9,6 +9,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -25,15 +26,16 @@ public class ReportController {
 
   @GetMapping
   public ResponseEntity<List<ReportResponse>> getUserReports(
-      @AuthenticationPrincipal Jwt jwt,
+//      @AuthenticationPrincipal Jwt jwt,
+      @RequestParam String userId,  // ← берём из параметра
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
       @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
 
-    String preferredUsername = jwt.getClaim("preferred_username");
+//    String userId = jwt.getClaim("preferred_username");
 
-    System.out.println("Generating report for user: " + preferredUsername);
+    System.out.println("Generating report for user: " + userId);
 
-    LocalDate maxAvailableDate = reportService.getMaxAvailableDate(preferredUsername);
+    LocalDate maxAvailableDate = reportService.getMaxAvailableDate(userId);
 
     if (maxAvailableDate == null) {
       return ResponseEntity.noContent().build();
@@ -46,12 +48,18 @@ public class ReportController {
       toDate = LocalDate.now();
     }
 
-    List<ReportResponse> reports = reportService.getUserReports(preferredUsername, fromDate, toDate);
+    List<ReportResponse> reports = reportService.getUserReports(userId, fromDate, toDate);
 
     if (reports.isEmpty()) {
       return ResponseEntity.noContent().build();
     }
 
     return ResponseEntity.ok(reports);
+  }
+
+  @GetMapping("/test")
+  public ResponseEntity<?> test(@RequestHeader("Authorization") String auth) {
+    System.out.println("Authorization header: " + auth);
+    return ResponseEntity.ok("OK");
   }
 }
