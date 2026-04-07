@@ -1,0 +1,7 @@
+user_id,user_name,prosthesis_id,prosthesis_model
+user1,User One,P001,BioHand Pro
+user2,User Two,P002,BioFoot Plus
+prothetic1,Prothetic One,P003,BioHand Pro
+prothetic2,Prothetic Two,P004,BioFoot Plus
+prothetic3,Prothetic Three,P005,BioHand Pro
+admin1,Admin One,P006,BioHand Admin

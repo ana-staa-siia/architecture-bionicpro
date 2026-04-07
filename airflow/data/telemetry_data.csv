@@ -1,0 +1,13 @@
+user_id,prosthesis_id,event_date,total_sessions,avg_signal_strength,total_movements,error_count
+user1,P001,2026-04-01,45,78.5,320,2
+user2,P002,2026-04-01,38,65.2,280,5
+prothetic1,P003,2026-04-01,52,82.1,410,1
+prothetic1,P003,2026-04-02,65,85.7,211,0
+prothetic1,P003,2026-04-03,43,83.2,385,1
+prothetic2,P004,2026-04-01,63,41.3,321,1
+prothetic2,P004,2026-04-02,49,78.6,344,3
+prothetic2,P004,2026-04-03,32,61.5,350,0
+prothetic2,P004,2026-04-04,45,64.7,350,1
+prothetic3,P005,2026-04-03,53,48.4,543,1
+prothetic3,P005,2026-04-04,64,85.4,324,0
+admin1,P006,2026-04-01,30,55.1,200,4
